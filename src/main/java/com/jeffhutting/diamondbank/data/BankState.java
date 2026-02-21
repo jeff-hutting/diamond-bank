@@ -4,56 +4,47 @@ import com.jeffhutting.diamondbank.DiamondBank;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.world.PersistentState;
-import net.minecraft.world.PersistentStateManager;
-import net.minecraft.world.PersistentStateType;
-import net.minecraft.world.World;
+import net.minecraft.world.level.saveddata.SavedData;
+import net.minecraft.world.level.saveddata.SavedDataType;
+import net.minecraft.world.level.storage.DimensionDataStorage;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-public class BankState extends PersistentState {
+public class BankState extends SavedData {
 
-    // This is our ledger — every player's UUID mapped to their diamond balance
-    // UUID is Minecraft's unique identifier for each player account
+    // Our ledger — every player's UUID mapped to their diamond balance.
     private final Map<UUID, Long> balances;
 
-    // Private constructor used by the codec when loading from disk
+    // Private constructor used by the codec when loading from disk.
     private BankState(Map<UUID, Long> balances) {
         this.balances = new HashMap<>(balances);
     }
 
-    // Public no-arg constructor for creating a fresh state (no save file yet)
+    // Public no-arg constructor for creating a fresh state (no save file yet).
     public BankState() {
         this.balances = new HashMap<>();
     }
 
     // -----------------------------------------------------------------------
-    // CODEC — how the data is serialized to and from disk in 1.21.11+
+    // CODEC — how the data is serialized to and from disk
     // -----------------------------------------------------------------------
     //
-    // A Codec is Minecraft's modern serialization system. It describes how to
-    // convert an object to a storable format (like NBT or JSON) and back again.
+    // A Codec describes how to convert an object to a storable format (NBT/JSON)
+    // and back. We store balances as Map<String, Long> on disk because UUID
+    // isn't directly supported as a map key by Codec.
     //
-    // We can't use UUID as a map key directly with Codec, so we store balances
-    // as a Map<String, Long> on disk, converting UUIDs to/from strings.
-    //
-    // RecordCodecBuilder builds a codec for a class by describing each field.
-    // Codec.unboundedMap defines a map codec.
-    // Codec.STRING is the codec for String keys.
-    // Codec.LONG is the codec for Long values.
-
     private static final Codec<Map<UUID, Long>> BALANCES_CODEC =
         Codec.unboundedMap(Codec.STRING, Codec.LONG)
             .xmap(
-                // When LOADING: convert String keys back to UUIDs
+                // LOADING: convert String keys back to UUIDs
                 stringMap -> {
                     Map<UUID, Long> uuidMap = new HashMap<>();
                     stringMap.forEach((key, value) -> uuidMap.put(UUID.fromString(key), value));
                     return uuidMap;
                 },
-                // When SAVING: convert UUID keys to Strings
+                // SAVING: convert UUID keys to Strings
                 uuidMap -> {
                     Map<String, Long> stringMap = new HashMap<>();
                     uuidMap.forEach((key, value) -> stringMap.put(key.toString(), value));
@@ -67,10 +58,13 @@ public class BankState extends PersistentState {
         ).apply(instance, BankState::new));
 
     // -----------------------------------------------------------------------
-    // PERSISTENT STATE TYPE — registers this class with Minecraft's save system
+    // SAVED DATA TYPE — registers this class with Minecraft's save system
+    //
+    // In Mojang mappings, PersistentState -> SavedData
+    //                      PersistentStateType -> SavedDataType
+    //                      PersistentStateManager -> DimensionDataStorage
     // -----------------------------------------------------------------------
-
-    public static final PersistentStateType<BankState> TYPE = new PersistentStateType<>(
+    public static final SavedDataType<BankState> TYPE = new SavedDataType<>(
         DiamondBank.MOD_ID,   // Save file name: world/data/diamondbank.dat
         BankState::new,       // How to create a fresh state
         CODEC,                // How to save and load
@@ -78,23 +72,20 @@ public class BankState extends PersistentState {
     );
 
     // -----------------------------------------------------------------------
-    // PUBLIC API — how other classes interact with balances
+    // PUBLIC API
     // -----------------------------------------------------------------------
 
-    // Get a player's balance. Returns 0 if we've never seen them before.
     public long getBalance(UUID playerUuid) {
         return balances.getOrDefault(playerUuid, 0L);
     }
 
-    // Set a player's balance directly.
-    // markDirty() tells Minecraft "data changed, save it on the next world save."
+    // setDirty() tells Minecraft "data changed, save on next world save."
     public void setBalance(UUID playerUuid, long amount) {
         balances.put(playerUuid, amount);
-        markDirty();
+        setDirty();
     }
 
-    // Remove diamonds from a player's balance.
-    // Returns false if they can't afford it, so the caller knows the transaction failed.
+    // Returns false if the player can't afford it.
     public boolean withdraw(UUID playerUuid, long amount) {
         long current = getBalance(playerUuid);
         if (current < amount) return false;
@@ -102,7 +93,6 @@ public class BankState extends PersistentState {
         return true;
     }
 
-    // Add diamonds to a player's balance.
     public void deposit(UUID playerUuid, long amount) {
         setBalance(playerUuid, getBalance(playerUuid) + amount);
     }
@@ -111,14 +101,10 @@ public class BankState extends PersistentState {
     // HOW OTHER CLASSES GET ACCESS TO THIS STATE
     // -----------------------------------------------------------------------
 
-    // Any class that needs to read or write balances calls this method.
-    // It asks the overworld's PersistentStateManager to either load the
-    // existing diamondbank.dat file or create a fresh one if none exists yet.
+    // Any class that needs to read/write balances calls this static method.
+    // It asks the overworld's DimensionDataStorage to load or create our save file.
     public static BankState getServerState(MinecraftServer server) {
-        PersistentStateManager manager = server
-            .getWorld(World.OVERWORLD)
-            .getPersistentStateManager();
-
-        return manager.getOrCreate(TYPE);
+        DimensionDataStorage storage = server.overworld().getDataStorage();
+        return storage.computeIfAbsent(TYPE);
     }
 }
