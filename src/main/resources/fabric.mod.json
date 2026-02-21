@@ -1,41 +1,31 @@
 {
 	"schemaVersion": 1,
-	"id": "modid",
+	"id": "diamondbank",
 	"version": "${version}",
-	"name": "Example mod",
-	"description": "This is an example description! Tell everyone what your mod is about!",
+	"name": "Diamond Bank",
+	"description": "Deposit your diamonds for safekeeping. Transfer between players. Real diamonds, real economy.",
 	"authors": [
-		"Me!"
+		"Jeff Hutting"
 	],
-	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	 "contact": {
+		"homepage": "",
+		"sources": ""
 	},
-	"license": "CC0-1.0",
-	"icon": "assets/modid/icon.png",
+	"license": "MIT",
+	"icon": "assets/diamondbank/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
-			"com.example.ExampleMod"
+			"com.jeffhutting.diamondbank.DiamondBank"
 		],
-		"client": [
-			"com.example.ExampleModClient"
+		"server": [
+			"com.jeffhutting.diamondbank.DiamondBankServer"
 		]
 	},
-	"mixins": [
-		"modid.mixins.json",
-		{
-			"config": "modid.client.mixins.json",
-			"environment": "client"
-		}
-	],
 	"depends": {
 		"fabricloader": ">=0.18.2",
+		"fabric-api": "*",
 		"minecraft": "~1.21.11",
-		"java": ">=21",
-		"fabric-api": "*"
-	},
-	"suggests": {
-		"another-mod": "*"
+		"java": ">=21"
 	}
 }
